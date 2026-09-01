@@ -1,0 +1,5 @@
+models:
+  - model_id: smoke_qwen
+    model_role: smoke_test
+    stage: smoke
+    source: Qwen/Qwen2.5-0.5B-Instruct
