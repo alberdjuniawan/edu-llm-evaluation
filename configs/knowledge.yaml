@@ -1,0 +1,9 @@
+knowledge:
+  primary_score_mode: mean_log_likelihood
+  primary_levels:
+    - SD
+    - SMP
+  retention_levels:
+    - SMA
+  exclude_fewshot: true
+  batch_size: 1
