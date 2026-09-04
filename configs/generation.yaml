@@ -1,0 +1,22 @@
+generation:
+  max_new_tokens: 256
+  do_sample: false
+  use_cache: true
+
+  prompt_version: cg_v1
+
+  target_grades:
+    - SD6
+    - SMP7
+    - SMP9
+    - SMA10
+
+  subjects:
+    - IPA
+    - Bahasa Indonesia
+    - Pendidikan Pancasila
+    - Informatika
+    - IPS
+
+  pilot_cases_per_subject: 2
+  full_cases_per_subject: 12
