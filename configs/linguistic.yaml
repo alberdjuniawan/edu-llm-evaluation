@@ -1,0 +1,3 @@
+linguistic:
+  min_text_chars: 1
+  include_english_formulas: true
