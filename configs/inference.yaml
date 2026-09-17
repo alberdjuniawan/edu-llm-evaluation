@@ -1,0 +1,11 @@
+inference:
+  precisions:
+    - bf16
+  batch_sizes:
+    - 1
+    - 2
+    - 4
+  max_new_tokens: 64
+  warmup_prompts: 1
+  measure_ttft: true
+  measure_tpot: true

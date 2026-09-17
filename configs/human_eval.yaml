@@ -1,0 +1,13 @@
+human_eval:
+  scale_min: 1
+  scale_max: 5
+  dimensions:
+    - factual_correctness
+    - lexical_appropriateness
+    - syntactic_appropriateness
+    - conceptual_appropriateness
+    - pedagogical_appropriateness
+    - overall_grade_fit
+  blinding_seed: 42
+  pairwise_subset_fraction: 0.25
+  calibration_batch_size: 8
