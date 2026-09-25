@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Penilaian Materi Pembelajaran</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 860px; margin: 0 auto; padding: 16px; line-height: 1.5; }
+  .card { border: 1px solid #ccc; border-radius: 8px; padding: 16px; margin: 12px 0; }
+  .output { background: #f8f8f8; white-space: pre-wrap; }
+  .ref { background: #fffbe6; white-space: pre-wrap; }
+  table.rubric { border-collapse: collapse; width: 100%; }
+  table.rubric td, table.rubric th { border: 1px solid #ddd; padding: 6px; text-align: center; }
+  table.rubric td:first-child { text-align: left; }
+  .progress { height: 10px; background: #eee; border-radius: 5px; }
+  .progress > div { height: 100%; background: #2a7; border-radius: 5px; }
+  button { padding: 8px 16px; margin: 4px; }
+  .meta { color: #555; font-size: 0.9em; }
+  input[type=text] { padding: 6px; width: 240px; }
+</style>
+</head>
+<body>
+<h1>Penilaian Materi Pembelajaran</h1>
+
+<div class="card" id="setup">
+  <label>ID Penilai: <input type="text" id="rater" placeholder="mis. guru-01"></label>
+  <label style="margin-left:12px">File paket (.jsonl):
+    <input type="file" id="packfile" accept=".jsonl,.json">
+  </label>
+  <button onclick="exportRatings()">Unduh hasil (.jsonl)</button>
+  <div class="meta">Bekerja offline. Jawaban tersimpan otomatis di browser ini.</div>
+</div>
+
+<div class="card" id="rate" style="display:none">
+  <div class="progress"><div id="bar" style="width:0%"></div></div>
+  <p id="counter" class="meta"></p>
+  <h2 id="title"></h2>
+  <p class="meta" id="context"></p>
+  <details>
+    <summary>Materi rujukan (acuan fakta)</summary>
+    <div class="card ref" id="ref"></div>
+  </details>
+  <h3>Output yang dinilai</h3>
+  <div class="card output" id="out"></div>
+  <table class="rubric" id="rubric"></table>
+  <p>
+    <button onclick="move(-1)">← Sebelumnya</button>
+    <button onclick="move(1)">Berikutnya →</button>
+  </p>
+</div>
+
+<script>
+const DIMS = [
+  ["factual_correctness", "Kebenaran fakta", "Isi benar menurut materi rujukan?"],
+  ["lexical_appropriateness", "Kata/istilah", "Pilihan kata sesuai untuk target kelas?"],
+  ["syntactic_appropriateness", "Struktur kalimat", "Panjang/kerumitan kalimat sesuai?"],
+  ["conceptual_appropriateness", "Kedalaman konsep", "Tidak menuntut prasyarat terlalu tinggi/rendah?"],
+  ["pedagogical_appropriateness", "Dukungan belajar", "Ada penjelasan, contoh, scaffolding?"],
+  ["overall_grade_fit", "Kesesuaian umum", "1=jelas tidak sesuai 2=banyak perlu dirombak 3=borderline 4=umumnya sesuai 5=sangat sesuai"]
+];
+let pack = [], idx = 0, ratings = {}, raterId = "";
+
+const raterInput = document.getElementById("rater");
+raterInput.value = localStorage.getItem("raterId") || "";
+raterInput.onchange = () => {
+  raterId = raterInput.value.trim();
+  localStorage.setItem("raterId", raterId);
+  loadDraft();
+};
+document.getElementById("packfile").onchange = (e) => {
+  const f = e.target.files[0];
+  if (!f) return;
+  const rd = new FileReader();
+  rd.onload = () => {
+    pack = rd.result.split("\n").filter(l => l.trim()).map(l => JSON.parse(l));
+    idx = 0;
+    loadDraft();
+    document.getElementById("rate").style.display = "block";
+    render();
+  };
+  rd.readAsText(f);
+};
+
+function storeKey() {
+  let h = 0;
+  const s = raterId + ":" + pack.length + ":" + (pack[0] ? pack[0].pack_id : "");
+  for (const c of s) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return "ratings-" + h;
+}
+function loadDraft() {
+  try { ratings = JSON.parse(localStorage.getItem(storeKey()) || "{}"); }
+  catch { ratings = {}; }
+}
+function saveDraft() {
+  localStorage.setItem(storeKey(), JSON.stringify(ratings));
+}
+function current() { return ratings[pack[idx].pack_id] || {}; }
+
+function render() {
+  const item = pack[idx];
+  const done = Object.keys(ratings).filter(k => DIMS.every(d => ratings[k] && ratings[k][d[0]])).length;
+  document.getElementById("bar").style.width = (100 * done / pack.length) + "%";
+  document.getElementById("counter").textContent =
+    `Item ${idx + 1}/${pack.length} — selesai ${done} — ID: ${raterId || "(isi ID penilai dulu)"}`;
+  document.getElementById("title").textContent =
+    `${item.pack_id} · Model ${item.blind_model_label} · ${item.target_grade}`;
+  document.getElementById("context").textContent =
+    `${item.subject || ""} — ${item.concept || ""} (kasus ${item.case_id})`;
+  document.getElementById("ref").textContent = item.reference_text || "(tidak ada)";
+  document.getElementById("out").textContent = item.output_text;
+  const cur = current();
+  let html = "<tr><th>Dimensi</th><th>1</th><th>2</th><th>3</th><th>4</th><th>5</th></tr>";
+  for (const [key, label, hint] of DIMS) {
+    html += `<tr><td title="${hint}"><b>${label}</b><br><small>${hint}</small></td>`;
+    for (let v = 1; v <= 5; v++) {
+      const checked = cur[key] === v ? "checked" : "";
+      html += `<td><input type="radio" name="${key}" value="${v}" ${checked} onchange="setScore('${key}',${v})"></td>`;
+    }
+    html += "</tr>";
+  }
+  document.getElementById("rubric").innerHTML = html;
+}
+function setScore(key, v) {
+  if (!raterId) { alert("Isi ID penilai dulu."); render(); return; }
+  const id = pack[idx].pack_id;
+  ratings[id] = ratings[id] || {};
+  ratings[id][key] = v;
+  saveDraft();
+  render();
+}
+function move(d) {
+  const cur = current();
+  if (d > 0 && !DIMS.every(x => cur[x[0]])) {
+    alert("Lengkapi semua 6 dimensi dulu sebelum lanjut.");
+    return;
+  }
+  idx = Math.min(pack.length - 1, Math.max(0, idx + d));
+  render();
+  window.scrollTo(0, 0);
+}
+function exportRatings() {
+  if (!pack.length) { alert("Muat file paket dulu."); return; }
+  if (!raterId) { alert("Isi ID penilai dulu."); return; }
+  const rows = [];
+  for (const item of pack) {
+    const r = ratings[item.pack_id];
+    if (!r || !DIMS.every(d => r[d[0]])) continue;
+    rows.push({
+      rating_id: `${raterId}:${item.pack_id}`,
+      case_id: item.case_id,
+      target_grade: item.target_grade,
+      rater_id: raterId,
+      factual_correctness: r.factual_correctness,
+      lexical_appropriateness: r.lexical_appropriateness,
+      syntactic_appropriateness: r.syntactic_appropriateness,
+      conceptual_appropriateness: r.conceptual_appropriateness,
+      pedagogical_appropriateness: r.pedagogical_appropriateness,
+      overall_grade_fit: r.overall_grade_fit
+    });
+  }
+  if (!rows.length) { alert("Belum ada penilaian lengkap."); return; }
+  const blob = new Blob([rows.map(r => JSON.stringify(r)).join("\n")], {type: "application/json"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `ratings-${raterId}.jsonl`;
+  a.click();
+  alert(`${rows.length}/${pack.length} penilaian lengkap terunduh.`);
+}
+</script>
+</body>
+</html>
