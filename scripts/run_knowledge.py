@@ -232,9 +232,17 @@ def main() -> None:
         help="Directory for benchmark results.",
     )
 
+    parser.add_argument(
+        "--span",
+        choices=["full", "answer"],
+        default=None,
+        help="Scoring span; defaults to configs/knowledge.yaml.",
+    )
+
     args = parser.parse_args()
 
     knowledge_config = load_knowledge_config(KNOWLEDGE_CONFIG)
+    span = args.span or knowledge_config.get("score_span", "full")
 
     seed = load_runtime_seed(RUNTIME_CONFIG)
     seed_everything(seed)
@@ -284,7 +292,12 @@ def main() -> None:
 
     print(f"device={device} dtype={dtype}")
 
-    scorer = KnowledgeScorer(model=model, tokenizer=tokenizer, device=device)
+    scorer = KnowledgeScorer(
+        model=model,
+        tokenizer=tokenizer,
+        device=device,
+        span=span,
+    )
 
     if torch.cuda.is_available():
         torch.cuda.reset_peak_memory_stats()
@@ -327,6 +340,7 @@ def main() -> None:
         "dtype": str(dtype),
         "scoring": {
             "score_mode": knowledge_config["primary_score_mode"],
+            "score_span": span,
             "batch_size": knowledge_config["batch_size"],
             "exclude_fewshot": knowledge_config["exclude_fewshot"],
         },

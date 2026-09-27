@@ -3,6 +3,7 @@ import json
 from collections import defaultdict
 from pathlib import Path
 
+from edu_eval.knowledge.diagnostics import correctness, position_bias_report
 from edu_eval.statistics.metrics import bootstrap_ci, paired_bootstrap_ci
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -23,15 +24,6 @@ def load_predictions(path: Path) -> list[dict]:
                 raise RuntimeError(f"Invalid JSON at {path}:{line_number}.") from exc
 
     return records
-
-
-def correctness(record: dict) -> bool:
-    predictions = record["predictions"]
-
-    if "mean_log_likelihood" in predictions:
-        return bool(predictions["mean_log_likelihood"]["correct"])
-
-    return bool(predictions["official"]["correct"])
 
 
 def summarize(records: list[dict], label: str) -> None:
@@ -62,6 +54,10 @@ def main() -> None:
     for model_id, records in by_model.items():
         print(model_id)
         summarize(records, "overall")
+        bias = position_bias_report(records)
+        print(f"predicted_positions={bias['predicted_counts']}")
+        print(f"gold_positions={bias['gold_counts']}")
+        print(f"acc_by_gold={bias['accuracy_by_gold_position']}")
         levels: dict[str, list[dict]] = defaultdict(list)
         subjects: dict[str, list[dict]] = defaultdict(list)
 

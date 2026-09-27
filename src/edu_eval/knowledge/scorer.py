@@ -29,6 +29,7 @@ class KnowledgePrediction(TypedDict):
     grade: str
     subject: str
     gold_index: int
+    score_span: str
     choice_scores: list[ChoiceScore]
     predictions: dict[str, ModePrediction]
 
@@ -39,10 +40,15 @@ class KnowledgeScorer:
         model: PreTrainedModel,
         tokenizer: PreTrainedTokenizerBase,
         device: torch.device,
+        span: str = "full",
     ) -> None:
+        if span not in ("full", "answer"):
+            raise ValueError("span must be 'full' or 'answer'.")
+
         self.model = model
         self.tokenizer = tokenizer
         self.device = device
+        self.span = span
         self.model.eval()
 
         if self.tokenizer.pad_token_id is None:
@@ -51,9 +57,14 @@ class KnowledgeScorer:
         self.tokenizer.padding_side = "right"
 
     @torch.inference_mode()
-    def _score_batch(self, prompts: list[str], choices: list[str]) -> list[ChoiceScore]:
+    def _score_batch(
+        self, prompts: list[str], choices: list[str], prompt_lens: list[int]
+    ) -> list[ChoiceScore]:
         if len(prompts) != len(choices):
             raise ValueError("Prompts and choices must have equal length.")
+
+        if len(prompts) != len(prompt_lens):
+            raise ValueError("Prompts and prompt_lens must have equal length.")
 
         full_texts = [
             prompt + choice for prompt, choice in zip(prompts, choices, strict=True)
@@ -89,8 +100,20 @@ class KnowledgeScorer:
                 logsumexp = torch.logaddexp(logsumexp, chunk_logsumexp)
 
         token_log_probs = target_logits - logsumexp
+
+        if self.span == "answer":
+            positions = torch.arange(
+                token_log_probs.size(1), device=token_log_probs.device
+            ).unsqueeze(0)
+            starts = (
+                torch.tensor(prompt_lens, device=token_log_probs.device).unsqueeze(1)
+                - 1
+            )
+            target_mask = target_mask & (positions >= starts)
+
         token_log_probs = token_log_probs.masked_fill(~target_mask, 0.0)
-        token_counts = target_mask.sum(dim=1)
+
+        token_counts = target_mask.sum(dim=1).clamp_min(1)
         total_log_likelihood = token_log_probs.sum(dim=1)
         mean_log_likelihood = total_log_likelihood / token_counts
 
@@ -128,11 +151,18 @@ class KnowledgeScorer:
             "margin": margin,
         }
 
+    def _prompt_len(self, prompt: str) -> int:
+        encoded = self.tokenizer(prompt, return_tensors="pt")
+
+        return int(encoded["input_ids"].shape[1])
+
     def predict(self, question: KnowledgeQuestion) -> KnowledgePrediction:
         prompt = format_indommlu_prompt(question)
+        prompt_len = self._prompt_len(prompt)
         scores = self._score_batch(
             prompts=[prompt] * len(question.choices),
             choices=question.choices,
+            prompt_lens=[prompt_len] * len(question.choices),
         )
         prediction = self._predict_from_scores(scores, question.answer_index)
 
@@ -142,6 +172,7 @@ class KnowledgeScorer:
             "grade": question.grade,
             "subject": question.subject,
             "gold_index": question.answer_index,
+            "score_span": self.span,
             "choice_scores": scores,
             "predictions": {"mean_log_likelihood": prediction},
         }
@@ -155,6 +186,7 @@ class KnowledgeScorer:
             batch = questions[start : start + batch_size]
             flattened_prompts: list[str] = []
             flattened_choices: list[str] = []
+            flattened_lens: list[int] = []
             boundaries: list[tuple[int, int]] = []
 
             for question in batch:
@@ -162,15 +194,28 @@ class KnowledgeScorer:
                 begin = len(flattened_prompts)
                 flattened_prompts.extend([prompt] * len(question.choices))
                 flattened_choices.extend(question.choices)
+                flattened_lens.extend(
+                    [self._prompt_len(prompt)] * len(question.choices)
+                )
                 end = len(flattened_prompts)
                 boundaries.append((begin, end))
 
             flattened_scores = self._score_batch(
-                prompts=flattened_prompts, choices=flattened_choices
+                prompts=flattened_prompts,
+                choices=flattened_choices,
+                prompt_lens=flattened_lens,
             )
 
             for question, (begin, end) in zip(batch, boundaries, strict=True):
-                scores = flattened_scores[begin:end]
+                scores = [
+                    ChoiceScore(
+                        choice_index=index,
+                        log_likelihood=score["log_likelihood"],
+                        mean_log_likelihood=score["mean_log_likelihood"],
+                        token_count=score["token_count"],
+                    )
+                    for index, score in enumerate(flattened_scores[begin:end])
+                ]
                 prediction = self._predict_from_scores(scores, question.answer_index)
                 results.append(
                     {
@@ -179,6 +224,7 @@ class KnowledgeScorer:
                         "grade": question.grade,
                         "subject": question.subject,
                         "gold_index": question.answer_index,
+                        "score_span": self.span,
                         "choice_scores": scores,
                         "predictions": {"mean_log_likelihood": prediction},
                     }
