@@ -85,3 +85,7 @@ htmlcov/
 experiments/local/
 # JupyterLab LSP cache
 .virtual_documents/
+
+# Design docs stay local (README.md is the only tracked doc)
+*.md
+!README.md
