@@ -1,4 +1,5 @@
 import argparse
+import gc
 import hashlib
 import json
 import time
@@ -9,12 +10,16 @@ import torch
 import yaml
 
 from edu_eval.generation.cases import (
+    dataset_fingerprint,
+    generation_config_hash,
     load_cases,
+    require_research_ready,
     select_full,
     select_pilot,
+    validate_resume_identity,
     validation_report,
 )
-from edu_eval.generation.config import GenerationConfig
+from edu_eval.generation.config import GenerationConfig, require_deterministic
 from edu_eval.generation.controlled import (
     ControlledGenerationResult,
     ControlledGenerationRunner,
@@ -92,6 +97,21 @@ def write_results(
             file.write(json.dumps(result, ensure_ascii=False) + "\n")
 
 
+def read_run_metadata(model_dir: Path) -> dict:
+    path = model_dir / "run_metadata.json"
+
+    if not path.exists():
+        return {}
+
+    with path.open("r", encoding="utf-8") as file:
+        content = json.load(file)
+
+    if not isinstance(content, dict):
+        raise TypeError(f"Invalid metadata at {path}.")
+
+    return content
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Run controlled grade-level generation.",
@@ -131,9 +151,16 @@ def main() -> None:
         help="Directory for generation results.",
     )
 
+    parser.add_argument(
+        "--allow-sampling",
+        action="store_true",
+        help="Permit do_sample=true robustness runs.",
+    )
+
     args = parser.parse_args()
 
     generation_config = GenerationConfig.from_yaml(args.generation_config)
+    require_deterministic(generation_config, args.allow_sampling)
 
     with RUNTIME_CONFIG.open("r", encoding="utf-8") as file:
         seed = yaml.safe_load(file)["runtime"]["seed"]
@@ -158,6 +185,8 @@ def main() -> None:
                 f"{report['subjects']} vs "
                 f"{generation_config.full_cases_per_subject}/subject."
             )
+
+        require_research_ready(report)
         selected = select_full(cases, generation_config)
 
     print(f"selected={len(selected)}")
@@ -168,6 +197,18 @@ def main() -> None:
 
     output_path = model_dir / "controlled_outputs.jsonl"
 
+    dataset_hash = dataset_fingerprint(args.cases)
+    config_hash = generation_config_hash(generation_config)
+    validate_resume_identity(
+        read_run_metadata(model_dir),
+        {
+            "model_id": spec.model_id,
+            "model_revision": spec.revision,
+            "mode": args.mode,
+            "dataset_hash": dataset_hash,
+            "generation_config_hash": config_hash,
+        },
+    )
     done = read_existing_keys(output_path, generation_config.prompt_version)
     print(f"resume={len(done)}")
 
@@ -238,6 +279,8 @@ def main() -> None:
         },
         "dataset": {
             "cases_path": str(args.cases.resolve()),
+            "dataset_hash": dataset_hash,
+            "generation_config_hash": config_hash,
             "selected_cases": len(selected),
             "expected_outputs": total_expected,
         },
@@ -265,6 +308,8 @@ def main() -> None:
     del generation_runner
     del model
     del tokenizer
+
+    gc.collect()
 
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
