@@ -4,7 +4,7 @@ from collections import defaultdict
 from pathlib import Path
 
 from edu_eval.knowledge.diagnostics import correctness, position_bias_report
-from edu_eval.statistics.metrics import bootstrap_ci, paired_bootstrap_ci
+from edu_eval.statistics.metrics import bootstrap_ci, cohens_h, paired_bootstrap_ci
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_RESULTS_DIR = PROJECT_ROOT / "results" / "knowledge"
@@ -26,12 +26,40 @@ def load_predictions(path: Path) -> list[dict]:
     return records
 
 
+def mean_margin(records: list[dict]) -> float:
+    margins = [
+        record["predictions"].get("mean_log_likelihood", {}).get("margin")
+        for record in records
+    ]
+    margins = [margin for margin in margins if isinstance(margin, (int, float))]
+
+    return sum(margins) / len(margins) if margins else 0.0
+
+
 def summarize(records: list[dict], label: str) -> None:
     flags = [1.0 if correctness(record) else 0.0 for record in records]
     low, high = bootstrap_ci(flags, seed=42)
     print(
-        f"{label}: n={len(flags)} acc={sum(flags) / len(flags):.4f} [{low:.4f}, {high:.4f}]"
+        f"{label}: n={len(flags)} acc={sum(flags) / len(flags):.4f} "
+        f"[{low:.4f}, {high:.4f}] margin={mean_margin(records):.3f}"
     )
+
+
+def summarize_slice(records: list[dict], label: str) -> None:
+    print(label)
+    summarize(records, "all")
+    grades: dict[str, list[dict]] = defaultdict(list)
+    subjects: dict[str, list[dict]] = defaultdict(list)
+
+    for record in records:
+        grades[record["grade"]].append(record)
+        subjects[record["subject"]].append(record)
+
+    for grade in sorted(grades):
+        summarize(grades[grade], f"grade {grade}")
+
+    for subject in sorted(subjects):
+        summarize(subjects[subject], f"subject {subject}")
 
 
 def main() -> None:
@@ -43,51 +71,55 @@ def main() -> None:
     if len(args.model_id) > 2:
         raise ValueError("Compare at most two models at a time.")
 
-    by_model: dict[str, list[dict]] = {}
+    by_model: dict[str, tuple[list[dict], list[dict]]] = {}
 
     for model_id in args.model_id:
         model_dir = args.results_dir / model_id
-        by_model[model_id] = load_predictions(
-            model_dir / "primary_sd_smp.jsonl"
-        ) + load_predictions(model_dir / "retention_sma.jsonl")
+        by_model[model_id] = (
+            load_predictions(model_dir / "primary_sd_smp.jsonl"),
+            load_predictions(model_dir / "retention_sma.jsonl"),
+        )
 
-    for model_id, records in by_model.items():
+    for model_id, (primary, retention) in by_model.items():
         print(model_id)
-        summarize(records, "overall")
-        bias = position_bias_report(records)
+        summarize_slice(primary, "primary SD+SMP")
+        summarize_slice(retention, "retention SMA")
+        bias = position_bias_report(primary + retention)
         print(f"predicted_positions={bias['predicted_counts']}")
         print(f"gold_positions={bias['gold_counts']}")
         print(f"acc_by_gold={bias['accuracy_by_gold_position']}")
-        levels: dict[str, list[dict]] = defaultdict(list)
-        subjects: dict[str, list[dict]] = defaultdict(list)
-
-        for record in records:
-            levels[record["level"]].append(record)
-            subjects[record["subject"]].append(record)
-
-        for level in sorted(levels):
-            summarize(levels[level], f"level {level}")
-
-        for subject in sorted(subjects):
-            summarize(subjects[subject], f"subject {subject}")
 
     if len(by_model) == 2:
-        first, second = (by_model[mid] for mid in args.model_id)
-        first_map = {r["question_id"]: correctness(r) for r in first}
-        second_map = {r["question_id"]: correctness(r) for r in second}
-        shared = sorted(set(first_map) & set(second_map))
+        (
+            (first_id, (first_primary, first_retention)),
+            (
+                second_id,
+                (second_primary, second_retention),
+            ),
+        ) = list(by_model.items())
 
-        if not shared:
-            raise ValueError("No shared question_ids for paired comparison.")
+        for label, first, second in (
+            ("primary", first_primary, second_primary),
+            ("retention", first_retention, second_retention),
+        ):
+            first_map = {r["question_id"]: correctness(r) for r in first}
+            second_map = {r["question_id"]: correctness(r) for r in second}
+            shared = sorted(set(first_map) & set(second_map))
 
-        low, high = paired_bootstrap_ci(
-            [float(first_map[q]) for q in shared],
-            [float(second_map[q]) for q in shared],
-            seed=42,
-        )
-        print(
-            f"paired {args.model_id[0]}-{args.model_id[1]}: n={len(shared)} [{low:.4f}, {high:.4f}]"
-        )
+            if not shared:
+                raise ValueError(f"No shared question_ids in {label}.")
+
+            low, high = paired_bootstrap_ci(
+                [float(first_map[q]) for q in shared],
+                [float(second_map[q]) for q in shared],
+                seed=42,
+            )
+            first_acc = sum(first_map[q] for q in shared) / len(shared)
+            second_acc = sum(second_map[q] for q in shared) / len(shared)
+            print(
+                f"paired {label} {first_id}-{second_id}: n={len(shared)} "
+                f"[{low:.4f}, {high:.4f}] h={cohens_h(first_acc, second_acc):.3f}"
+            )
 
 
 if __name__ == "__main__":
