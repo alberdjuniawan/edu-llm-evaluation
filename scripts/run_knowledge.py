@@ -1,4 +1,5 @@
 import argparse
+import gc
 import json
 import time
 from collections.abc import Sequence
@@ -370,6 +371,8 @@ def main() -> None:
     del scorer
     del model
     del tokenizer
+
+    gc.collect()
 
     if torch.cuda.is_available():
         torch.cuda.empty_cache()

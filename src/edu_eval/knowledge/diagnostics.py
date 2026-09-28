@@ -1,4 +1,8 @@
-def correctness(record: dict) -> bool:
+from collections.abc import Mapping
+from typing import Any
+
+
+def correctness(record: Mapping[str, Any]) -> bool:
     predictions = record["predictions"]
 
     if "mean_log_likelihood" in predictions:

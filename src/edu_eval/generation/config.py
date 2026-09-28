@@ -17,6 +17,10 @@ class GenerationConfig(BaseModel):
         min_length=1,
     )
 
+    subjects: list[str] = Field(
+        min_length=1,
+    )
+
     pilot_cases_per_subject: int = Field(
         gt=0,
     )
@@ -47,3 +51,11 @@ class GenerationConfig(BaseModel):
             raise TypeError("'generation' must be a YAML mapping.")
 
         return cls.model_validate(raw_generation)
+
+
+def require_deterministic(config: GenerationConfig, allow_sampling: bool) -> None:
+    if config.do_sample and not allow_sampling:
+        raise RuntimeError(
+            "Primary protocol is deterministic (do_sample=false). "
+            "Pass --allow-sampling for robustness runs."
+        )

@@ -669,7 +669,8 @@ def main() -> None:
     print(
         f"schema={report['schema']} provenance={report['provenance']} "
         f"phase={report['phase_mapping']} dup={report['duplicate_case_ids']} "
-        f"pilot={report['pilot_ready']} full={report['full_ready']}"
+        f"pilot={report['pilot_ready']} full={report['full_ready']} "
+        f"research={report['research_ready']}"
     )
 
     for note in report["notes"]:

@@ -7,6 +7,23 @@ def _mean(values: Sequence[float]) -> float:
     return sum(values) / len(values)
 
 
+def cohens_h(first: float, second: float) -> float:
+    first = min(1.0, max(0.0, first))
+    second = min(1.0, max(0.0, second))
+
+    return 2 * math.asin(math.sqrt(first)) - 2 * math.asin(math.sqrt(second))
+
+
+def cliffs_delta(first: Sequence[float], second: Sequence[float]) -> float:
+    if not first or not second:
+        raise ValueError("Samples must not be empty.")
+
+    greater = sum(1 for a in first for b in second if a > b)
+    smaller = sum(1 for a in first for b in second if a < b)
+
+    return (greater - smaller) / (len(first) * len(second))
+
+
 def kendall_tau_b(
     a: Sequence[float],
     b: Sequence[float],

@@ -22,6 +22,17 @@ DocumentationStatus = Literal[
     "unknown",
 ]
 
+LineageStatus = Literal[
+    "verified",
+    "unresolved",
+]
+
+Precision = Literal[
+    "bf16",
+    "fp16",
+    "fp32",
+]
+
 
 class ModelSpec(BaseModel):
     model_id: str = Field(
@@ -41,6 +52,31 @@ class ModelSpec(BaseModel):
     revision: str | None = Field(
         default=None,
         description="Exact model revision, tag, or commit hash.",
+    )
+
+    lineage_group: str | None = Field(
+        default=None,
+        description="Research lineage this checkpoint belongs to.",
+    )
+
+    parent_model_id: str | None = Field(
+        default=None,
+        description="Registered parent checkpoint, if any.",
+    )
+
+    provenance_url: str | None = Field(
+        default=None,
+        description="Artifact or documentation URL.",
+    )
+
+    lineage_status: LineageStatus = Field(
+        default="unresolved",
+        description="Verified means source and revision confirmed.",
+    )
+
+    precision: Precision | None = Field(
+        default=None,
+        description="Forced compute precision; defaults apply when unset.",
     )
 
     architecture: str | None = None
