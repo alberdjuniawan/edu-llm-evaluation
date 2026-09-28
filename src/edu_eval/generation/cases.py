@@ -1,10 +1,14 @@
+import hashlib
 import json
 from collections import Counter
 from pathlib import Path
 from typing import TypedDict
 
 from edu_eval.generation.config import GenerationConfig
-from edu_eval.generation.schema import ControlledGenerationCase
+from edu_eval.generation.schema import (
+    EXPECTED_PHASE_GRADE,
+    ControlledGenerationCase,
+)
 
 
 class CaseValidationReport(TypedDict):
@@ -14,12 +18,52 @@ class CaseValidationReport(TypedDict):
     provenance: str
     curriculum_evidence: str
     phase_mapping: str
+    subjects_match: str
     duplicate_case_ids: str
     pilot_ready: str
     full_ready: str
+    research_ready: str
     phase_only_count: int
     grade_specific_count: int
     notes: list[str]
+
+
+def dataset_fingerprint(path: str | Path) -> str:
+    digest = hashlib.sha256()
+
+    with Path(path).open("rb") as file:
+        for chunk in iter(lambda: file.read(65536), b""):
+            digest.update(chunk)
+
+    return digest.hexdigest()
+
+
+def generation_config_hash(config: GenerationConfig) -> str:
+    payload = json.dumps(config.model_dump(mode="json"), sort_keys=True)
+
+    return hashlib.sha256(payload.encode()).hexdigest()
+
+
+def require_research_ready(report: CaseValidationReport) -> None:
+    if report["research_ready"] != "PASS":
+        raise RuntimeError(
+            f"Dataset not research-ready: {report['research_ready']}. "
+            "Complete SME review first; pilot mode stays available."
+        )
+
+
+def validate_resume_identity(metadata: dict, expected: dict) -> None:
+    if not metadata:
+        return
+
+    for key, want in expected.items():
+        got = metadata.get(key)
+
+        if got != want:
+            raise RuntimeError(
+                f"Resume identity mismatch on {key!r}: metadata has {got!r}, "
+                f"current run has {want!r}. Move old outputs aside."
+            )
 
 
 def load_cases(path: str | Path) -> list[ControlledGenerationCase]:
@@ -115,9 +159,28 @@ def validation_report(
     capsules = sum(
         1 for case in cases if case.reference.source_type == "project_capsule"
     )
+    phases_valid = all(
+        (evidence.curriculum_phase, evidence.grade) == EXPECTED_PHASE_GRADE[target]
+        for case in cases
+        for target, evidence in case.target_evidence.items()
+    )
+    expected_subjects = set(config.subjects)
+    actual_subjects = set(counts)
+    subjects_ok = actual_subjects == expected_subjects
 
     if capsules:
         notes.append(f"{capsules}/{len(cases)} references are project_capsule drafts.")
+
+    if phase_only:
+        notes.append(
+            f"{phase_only} evidence entries are phase_only, not grade-specific."
+        )
+
+    if not subjects_ok:
+        notes.append(
+            f"subject mismatch: expected {sorted(expected_subjects)}, "
+            f"got {sorted(actual_subjects)}."
+        )
 
     if "SMP7" in config.target_grades and "SMP9" in config.target_grades:
         notes.append("SMP7 and SMP9 share Phase D by design.")
@@ -136,16 +199,37 @@ def validation_report(
 
         return "PASS"
 
+    pilot_ready = check_balance(config.pilot_cases_per_subject, "Pilot")
+    full_ready = check_balance(config.full_cases_per_subject, "Full")
+    blockers = []
+
+    if duplicate_ids:
+        blockers.append(f"duplicate case ids: {duplicate_ids}")
+
+    if capsules:
+        blockers.append(f"{capsules} project_capsule references")
+
+    if phase_only:
+        blockers.append(f"{phase_only} phase_only evidence entries")
+
+    if not subjects_ok:
+        blockers.append("subject mismatch vs config")
+
+    if full_ready != "PASS":
+        blockers.append("full subject balance not met")
+
     return {
         "total_cases": len(cases),
         "subjects": dict(sorted(counts.items())),
         "schema": "PASS",
-        "provenance": "PASS",
+        "provenance": "PASS" if capsules == 0 else "DRAFT",
         "curriculum_evidence": "PASS",
-        "phase_mapping": "PASS",
+        "phase_mapping": "PASS" if phases_valid else "FAIL",
+        "subjects_match": "PASS" if subjects_ok else "FAIL",
         "duplicate_case_ids": (f"FAIL: {duplicate_ids}" if duplicate_ids else "PASS"),
-        "pilot_ready": check_balance(config.pilot_cases_per_subject, "Pilot"),
-        "full_ready": check_balance(config.full_cases_per_subject, "Full"),
+        "pilot_ready": pilot_ready,
+        "full_ready": full_ready,
+        "research_ready": "PASS" if not blockers else f"NOT_READY: {blockers}",
         "phase_only_count": phase_only,
         "grade_specific_count": grade_specific,
         "notes": notes,
