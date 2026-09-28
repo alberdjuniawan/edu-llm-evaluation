@@ -64,6 +64,7 @@ class FakeGenerationRunner:
             use_cache=True,
             prompt_version="cg_v1",
             target_grades=["SD6", "SMP7", "SMP9", "SMA10"],
+            subjects=["IPA"],
             pilot_cases_per_subject=2,
             full_cases_per_subject=12,
         )
