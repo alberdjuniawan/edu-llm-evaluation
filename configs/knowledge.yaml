@@ -1,6 +1,6 @@
 knowledge:
   primary_score_mode: mean_log_likelihood
-  score_span: full
+  score_span: answer
   primary_levels:
     - SD
     - SMP

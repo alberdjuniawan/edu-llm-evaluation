@@ -45,9 +45,19 @@ def summarize(records: list[dict], label: str) -> None:
     )
 
 
-def summarize_slice(records: list[dict], label: str) -> None:
+def summarize_slice(records: list[dict], label: str, by_level: bool = False) -> None:
     print(label)
     summarize(records, "all")
+
+    if by_level:
+        levels: dict[str, list[dict]] = defaultdict(list)
+
+        for record in records:
+            levels[record["level"]].append(record)
+
+        for level in sorted(levels):
+            summarize(levels[level], f"level {level}")
+
     grades: dict[str, list[dict]] = defaultdict(list)
     subjects: dict[str, list[dict]] = defaultdict(list)
 
@@ -68,8 +78,8 @@ def main() -> None:
     parser.add_argument("--results-dir", type=Path, default=DEFAULT_RESULTS_DIR)
     args = parser.parse_args()
 
-    if len(args.model_id) > 2:
-        raise ValueError("Compare at most two models at a time.")
+    if not args.model_id:
+        raise ValueError("Provide at least one --model-id.")
 
     by_model: dict[str, tuple[list[dict], list[dict]]] = {}
 
@@ -82,44 +92,42 @@ def main() -> None:
 
     for model_id, (primary, retention) in by_model.items():
         print(model_id)
-        summarize_slice(primary, "primary SD+SMP")
+        summarize_slice(primary, "primary SD+SMP", by_level=True)
         summarize_slice(retention, "retention SMA")
         bias = position_bias_report(primary + retention)
         print(f"predicted_positions={bias['predicted_counts']}")
         print(f"gold_positions={bias['gold_counts']}")
         print(f"acc_by_gold={bias['accuracy_by_gold_position']}")
 
-    if len(by_model) == 2:
-        (
-            (first_id, (first_primary, first_retention)),
-            (
-                second_id,
-                (second_primary, second_retention),
-            ),
-        ) = list(by_model.items())
+    if len(by_model) >= 2:
+        reference_id = args.model_id[0]
+        reference = by_model[reference_id]
 
-        for label, first, second in (
-            ("primary", first_primary, second_primary),
-            ("retention", first_retention, second_retention),
-        ):
-            first_map = {r["question_id"]: correctness(r) for r in first}
-            second_map = {r["question_id"]: correctness(r) for r in second}
-            shared = sorted(set(first_map) & set(second_map))
+        for other_id in args.model_id[1:]:
+            other = by_model[other_id]
 
-            if not shared:
-                raise ValueError(f"No shared question_ids in {label}.")
+            for label, first, second in (
+                ("primary", reference[0], other[0]),
+                ("retention", reference[1], other[1]),
+            ):
+                first_map = {r["question_id"]: correctness(r) for r in first}
+                second_map = {r["question_id"]: correctness(r) for r in second}
+                shared = sorted(set(first_map) & set(second_map))
 
-            low, high = paired_bootstrap_ci(
-                [float(first_map[q]) for q in shared],
-                [float(second_map[q]) for q in shared],
-                seed=42,
-            )
-            first_acc = sum(first_map[q] for q in shared) / len(shared)
-            second_acc = sum(second_map[q] for q in shared) / len(shared)
-            print(
-                f"paired {label} {first_id}-{second_id}: n={len(shared)} "
-                f"[{low:.4f}, {high:.4f}] h={cohens_h(first_acc, second_acc):.3f}"
-            )
+                if not shared:
+                    raise ValueError(f"No shared question_ids in {label}.")
+
+                low, high = paired_bootstrap_ci(
+                    [float(first_map[q]) for q in shared],
+                    [float(second_map[q]) for q in shared],
+                    seed=42,
+                )
+                first_acc = sum(first_map[q] for q in shared) / len(shared)
+                second_acc = sum(second_map[q] for q in shared) / len(shared)
+                print(
+                    f"paired {label} {reference_id}-{other_id}: n={len(shared)} "
+                    f"[{low:.4f}, {high:.4f}] h={cohens_h(first_acc, second_acc):.3f}"
+                )
 
 
 if __name__ == "__main__":
