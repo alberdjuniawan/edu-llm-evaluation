@@ -23,6 +23,14 @@ def check_research_record(payload: dict, line_number: int) -> ControlledGenerati
     if case.reference.source_type == "project_capsule":
         raise ValueError(f"line {line_number}: project_capsule is pilot-only.")
 
+    exposure = case.reference.training_exposure
+
+    if exposure != "unseen":
+        raise ValueError(
+            f"line {line_number}: training_exposure={exposure!r}; "
+            "primary research requires unseen."
+        )
+
     for target, evidence in case.target_evidence.items():
         if evidence.evidence_scope != "grade_specific":
             raise ValueError(f"line {line_number}: {target} is not grade_specific.")
@@ -64,6 +72,31 @@ def main() -> None:
     if not payloads:
         raise ValueError("No records found.")
 
+    config = GenerationConfig.from_yaml(GENERATION_CONFIG)
+
+    if args.min_per_subject is not None:
+        config = config.model_copy(
+            update={"full_cases_per_subject": args.min_per_subject}
+        )
+
+    expected_total = len(config.subjects) * config.full_cases_per_subject
+
+    if len(payloads) != expected_total:
+        raise ValueError(
+            f"Expected {expected_total} cases "
+            f"({len(config.subjects)} subjects x {config.full_cases_per_subject}), "
+            f"got {len(payloads)}."
+        )
+
+    report = validation_report(payloads, config)
+    print(f"research={report['research_ready']}")
+
+    for note in report["notes"]:
+        print(f"note: {note}")
+
+    if report["research_ready"] != "PASS":
+        raise SystemExit(1)
+
     args.output.parent.mkdir(parents=True, exist_ok=True)
 
     with args.output.open("w", encoding="utf-8") as file:
@@ -72,23 +105,12 @@ def main() -> None:
                 json.dumps(case.model_dump(mode="json"), ensure_ascii=False) + "\n"
             )
 
-    print(f"{len(payloads)} cases -> {args.output}")
+    print(f"RESEARCH {len(payloads)} cases -> {args.output}")
 
     cases = load_cases(args.output)
-    config = GenerationConfig.from_yaml(GENERATION_CONFIG)
+    reread = validation_report(cases, config)
 
-    if args.min_per_subject is not None:
-        config = config.model_copy(
-            update={"full_cases_per_subject": args.min_per_subject}
-        )
-
-    report = validation_report(cases, config)
-    print(f"research={report['research_ready']}")
-
-    for note in report["notes"]:
-        print(f"note: {note}")
-
-    if report["research_ready"] != "PASS":
+    if reread["research_ready"] != "PASS":
         raise SystemExit(1)
 
 

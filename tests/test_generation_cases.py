@@ -49,7 +49,7 @@ def _reference(kind="capsule"):
     }
 
 
-def _case(case_id, subject, scope="phase_only", ref="capsule"):
+def _case(case_id, subject, scope="phase_only", ref="capsule", exposure="unknown"):
     locator = "ATP X" if scope == "grade_specific" else None
 
     return ControlledGenerationCase.model_validate(
@@ -57,7 +57,7 @@ def _case(case_id, subject, scope="phase_only", ref="capsule"):
             "case_id": case_id,
             "subject": subject,
             "concept": "c",
-            "reference": _reference(ref),
+            "reference": {**_reference(ref), "training_exposure": exposure},
             "target_evidence": {
                 "SD6": _evidence("C", 6, scope, locator),
                 "SMP7": _evidence("D", 7, scope, locator),
@@ -81,7 +81,7 @@ def _eligible_cases():
     subjects = ["IPA"] * 3 + ["IPS"] * 3
 
     return [
-        _case(f"CG-{index:03d}", subject, "grade_specific", "official")
+        _case(f"CG-{index:03d}", subject, "grade_specific", "official", "unseen")
         for index, subject in enumerate(subjects, start=1)
     ]
 
