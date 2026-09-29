@@ -3,3 +3,26 @@ models:
     model_role: smoke_test
     stage: smoke
     source: Qwen/Qwen2.5-0.5B-Instruct
+
+  - model_id: qwen35_9b_base
+    model_role: research
+    stage: base
+    source: Qwen/Qwen3.5-9B-Base
+    revision: null
+    lineage_status: unresolved
+
+  - model_id: sr02_cpt_final
+    model_role: research
+    stage: cpt
+    source: aitf-ub-2026/ub-sr-02-qwen3.5-9b-cpt-final
+    revision: null
+    lineage_group: sr-02
+    parent_model_id: qwen35_9b_base
+    lineage_status: unresolved
+
+  - model_id: sr_all
+    model_role: research
+    stage: final
+    source: aitf-ub-2026/ub-sr-all
+    revision: null
+    lineage_status: unresolved

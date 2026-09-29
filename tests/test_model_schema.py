@@ -59,3 +59,15 @@ def test_invalid_parameter_count():
 
     with pytest.raises(ValidationError):
         ModelSpec.model_validate(payload)
+
+
+def test_base_and_final_stages_valid():
+    for stage in ("base", "final"):
+        model = ModelSpec(
+            model_id="m",
+            model_role="research",
+            stage=stage,
+            source="org/model",
+        )
+
+        assert model.stage == stage

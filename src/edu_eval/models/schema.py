@@ -9,11 +9,13 @@ ModelRole = Literal[
 
 ModelStage = Literal[
     "smoke",
+    "base",
     "pretrained",
     "cpt",
     "sft_v1",
     "sft_v2",
     "merged_sft",
+    "final",
 ]
 
 DocumentationStatus = Literal[
