@@ -71,12 +71,35 @@ def prediction_correct(result: KnowledgePrediction) -> bool:
     return bool(predictions["official"]["correct"])
 
 
+def _drop_torn_tail(path: Path) -> None:
+    with path.open("r", encoding="utf-8") as file:
+        lines = file.readlines()
+
+    torn = 0
+
+    while lines and lines[-1].strip():
+        try:
+            json.loads(lines[-1])
+            break
+        except json.JSONDecodeError:
+            lines.pop()
+            torn += 1
+
+    if torn:
+        with path.open("w", encoding="utf-8") as file:
+            file.writelines(lines)
+
+        print(f"warning: dropped {torn} torn trailing line(s) in {path}.")
+
+
 def read_existing_results(
     path: Path,
     questions: list[KnowledgeQuestion],
 ) -> tuple[int, int]:
     if not path.exists():
         return 0, 0
+
+    _drop_torn_tail(path)
 
     processed = 0
     correct = 0
