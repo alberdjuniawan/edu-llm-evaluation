@@ -157,9 +157,22 @@ def main() -> None:
         help="Permit do_sample=true robustness runs.",
     )
 
+    parser.add_argument(
+        "--max-new-tokens",
+        type=int,
+        default=None,
+        help="Override generation max_new_tokens (e.g. 256 vs 512 pilot).",
+    )
+
     args = parser.parse_args()
 
     generation_config = GenerationConfig.from_yaml(args.generation_config)
+
+    if args.max_new_tokens is not None:
+        generation_config = generation_config.model_copy(
+            update={"max_new_tokens": args.max_new_tokens}
+        )
+
     require_deterministic(generation_config, args.allow_sampling)
 
     with RUNTIME_CONFIG.open("r", encoding="utf-8") as file:
