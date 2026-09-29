@@ -136,7 +136,9 @@ instead of mixing outputs.
 ## 10. Gates and status
 
 Done: pipeline engineering, smoke runs (knowledge 12,860 Q, generation
-40/40), 60-case dataset, rater tooling, 106 tests green.
-Pending: 5 research checkpoints (need ≥24GB GPU), SME case review,
+40/40), 60-case dataset, rater tooling, 123 tests green.
+Pending: 3 research checkpoints M0 base / M1 CPT / M2 SR-All
+(need ≥24GB GPU; revisions frozen at audit, comparisons stage-wise
+only, never causal), SME case review,
 protocol freeze, panel human eval, gates G1–G4 + Pareto, inference
 optimization + quality regression. No weighted single score, ever.
