@@ -74,6 +74,17 @@ def test_invalid_precision_rejected():
         )
 
 
+def test_trust_remote_code_defaults_off():
+    spec = ModelSpec(
+        model_id="m",
+        model_role="research",
+        stage="final",
+        source="org/model",
+    )
+
+    assert spec.trust_remote_code is False
+
+
 def test_resolve_dtype_mapping():
     cpu = torch.device("cpu")
     cuda = torch.device("cuda")
@@ -82,3 +93,77 @@ def test_resolve_dtype_mapping():
     assert ModelLoader.resolve_dtype(cuda, None) == torch.bfloat16
     assert ModelLoader.resolve_dtype(cuda, "fp16") == torch.float16
     assert ModelLoader.resolve_dtype(cpu, "bf16") == torch.bfloat16
+
+
+def test_loader_uses_declared_generative_class():
+    from unittest.mock import MagicMock, patch
+
+    from edu_eval.models import loader as loader_module
+
+    spec = ModelSpec(
+        model_id="m",
+        model_role="research",
+        stage="final",
+        source="org/model",
+        trust_remote_code=True,
+    )
+    fake_model = MagicMock()
+    info = {"missing_keys": [], "unexpected_keys": [], "mismatched_keys": []}
+
+    with (
+        patch.object(
+            loader_module.AutoTokenizer,
+            "from_pretrained",
+            return_value=MagicMock(),
+        ),
+        patch.object(
+            loader_module.AutoConfig,
+            "from_pretrained",
+            return_value=MagicMock(architectures=["Qwen2ForCausalLM"]),
+        ),
+        patch.object(
+            loader_module.transformers.Qwen2ForCausalLM,
+            "from_pretrained",
+            return_value=(fake_model, info),
+        ) as model_fn,
+    ):
+        _, model, device = ModelLoader.load(spec)
+
+    assert model is fake_model
+    _, kwargs = model_fn.call_args
+    assert kwargs["trust_remote_code"] is True
+    assert kwargs["dtype"] == ModelLoader.resolve_dtype(device, None)
+    fake_model.eval.assert_called_once_with()
+
+
+def test_loader_rejects_undeclared_architecture():
+    from edu_eval.models import loader as loader_module
+
+    spec = ModelSpec(
+        model_id="m",
+        model_role="research",
+        stage="final",
+        source="org/model",
+    )
+
+    with pytest.raises(ValueError, match="no architectures"):
+        loader_module.ModelLoader.resolve_model_class(spec, [])
+
+    with pytest.raises(TypeError, match="not a generative model"):
+        loader_module.ModelLoader.resolve_model_class(spec, ["Qwen2Model"])
+
+    with pytest.raises(ValueError, match="trust_remote_code"):
+        loader_module.ModelLoader.resolve_model_class(spec, ["NoSuchClass123"])
+
+
+def test_loader_rejects_mismatched_weights():
+    from edu_eval.models import loader as loader_module
+
+    with pytest.raises(RuntimeError, match="did not match"):
+        loader_module.ModelLoader.verify_loading_info(
+            {"missing_keys": ["a"], "unexpected_keys": [], "mismatched_keys": []}
+        )
+
+    loader_module.ModelLoader.verify_loading_info(
+        {"missing_keys": [], "unexpected_keys": [], "mismatched_keys": []}
+    )
