@@ -5,6 +5,7 @@ import json
 import time
 from collections.abc import Sequence
 from pathlib import Path
+from typing import cast
 
 import torch
 import yaml
@@ -24,7 +25,7 @@ from edu_eval.generation.controlled import (
     ControlledGenerationResult,
     ControlledGenerationRunner,
 )
-from edu_eval.generation.runner import GenerationRunner
+from edu_eval.generation.runner import GenerationRunner, GenerativeModel
 from edu_eval.generation.schema import ControlledGenerationCase
 from edu_eval.models.loader import ModelLoader
 from edu_eval.models.registry import ModelRegistry
@@ -217,7 +218,7 @@ def main() -> None:
     print(f"device={device} dtype={dtype}")
 
     generation_runner = GenerationRunner(
-        model=model,
+        model=cast(GenerativeModel, model),
         tokenizer=tokenizer,
         device=device,
         config=generation_config,
