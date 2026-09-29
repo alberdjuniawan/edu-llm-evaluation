@@ -1,5 +1,6 @@
 import time
-from typing import Any, Protocol, TypedDict
+from collections.abc import Callable
+from typing import Protocol, TypedDict
 
 import torch
 from transformers import BatchEncoding, PreTrainedTokenizerBase
@@ -9,9 +10,7 @@ from edu_eval.generation.config import GenerationConfig
 
 
 class GenerativeModel(Protocol):
-    def generate(
-        self, *args: Any, **kwargs: Any
-    ) -> torch.LongTensor | GenerateOutput: ...
+    generate: Callable[..., torch.LongTensor | GenerateOutput]
 
 
 class GenerationResult(TypedDict):
