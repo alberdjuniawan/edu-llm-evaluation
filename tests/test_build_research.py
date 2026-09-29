@@ -28,6 +28,7 @@ def _payload(case_id="CG-001", scope="grade_specific", source="official_textbook
             "source_type": source,
             "source_version": None,
             "locator": "p.1" if source != "project_capsule" else None,
+            "training_exposure": "unseen",
             "text": "x",
         },
         "target_evidence": {
@@ -81,6 +82,24 @@ def test_phase_only_evidence_rejected():
         module.check_research_record(payload, 3)
 
 
+def test_seen_exposure_rejected():
+    module = _load("build_research_cases.py")
+    payload = _payload()
+    payload["reference"]["training_exposure"] = "seen"
+
+    with pytest.raises(ValueError, match="unseen"):
+        module.check_research_record(payload, 4)
+
+
+def test_unknown_exposure_rejected():
+    module = _load("build_research_cases.py")
+    payload = _payload()
+    del payload["reference"]["training_exposure"]
+
+    with pytest.raises(ValueError, match="unseen"):
+        module.check_research_record(payload, 5)
+
+
 def test_missing_input_rejected(tmp_path, monkeypatch):
     module = _load("build_research_cases.py")
     monkeypatch.setattr(
@@ -130,3 +149,55 @@ def test_successful_build_marks_research_ready(tmp_path, monkeypatch):
     cases = module.load_cases(dst)
 
     assert len(cases) == 5
+
+
+def test_exposure_blocks_research_ready():
+    from edu_eval.generation.cases import validation_report
+    from edu_eval.generation.config import GenerationConfig
+
+    module = _load("build_research_cases.py")
+    config = GenerationConfig(
+        max_new_tokens=256,
+        do_sample=False,
+        use_cache=True,
+        prompt_version="cg_v1",
+        target_grades=["SD6", "SMP7", "SMP9", "SMA10"],
+        subjects=["IPA"],
+        pilot_cases_per_subject=1,
+        full_cases_per_subject=1,
+    )
+    payload = _payload(case_id="CG-001")
+    payload["reference"]["training_exposure"] = "unknown"
+    case = module.ControlledGenerationCase.model_validate(payload)
+    report = validation_report([case], config)
+
+    assert report["research_ready"].startswith("NOT_READY")
+    assert "unknown training exposure" in report["research_ready"]
+
+
+def test_failed_build_writes_nothing(tmp_path, monkeypatch):
+    import json
+
+    module = _load("build_research_cases.py")
+    src = tmp_path / "in.jsonl"
+    dst = tmp_path / "out.jsonl"
+    src.write_text(json.dumps(_payload()) + "\n", encoding="utf-8")
+    dst.write_text("PREVIOUS\n", encoding="utf-8")
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "build_research_cases.py",
+            "--input",
+            str(src),
+            "--output",
+            str(dst),
+            "--force",
+            "--min-per-subject",
+            "99",
+        ],
+    )
+
+    with pytest.raises((ValueError, SystemExit)):
+        module.main()
+
+    assert dst.read_text(encoding="utf-8") == "PREVIOUS\n"
