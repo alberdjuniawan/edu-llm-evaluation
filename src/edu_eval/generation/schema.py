@@ -14,6 +14,12 @@ SourceType = Literal[
     "project_capsule",
 ]
 
+TrainingExposure = Literal[
+    "unseen",
+    "seen",
+    "unknown",
+]
+
 EXPECTED_PHASE_GRADE: dict[GradeTarget, tuple[CurriculumPhase, int]] = {
     "SD6": ("C", 6),
     "SMP7": ("D", 7),
@@ -32,6 +38,7 @@ class SourceReference(BaseModel):
     source_version: str | None = Field(default=None)
     locator: str | None = Field(default=None)
     text: str = Field(min_length=1)
+    training_exposure: TrainingExposure = Field(default="unknown")
 
     @model_validator(mode="after")
     def validate_provenance_honesty(self) -> "SourceReference":
