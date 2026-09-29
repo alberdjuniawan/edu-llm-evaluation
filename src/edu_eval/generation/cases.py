@@ -56,7 +56,15 @@ def validate_resume_identity(metadata: dict, expected: dict) -> None:
     if not metadata:
         return
 
+    skipped = [key for key in expected if key not in metadata]
+
+    if skipped:
+        print(f"warning: legacy metadata lacks {skipped}; identity partially verified.")
+
     for key, want in expected.items():
+        if key not in metadata:
+            continue
+
         got = metadata.get(key)
 
         if got != want:
