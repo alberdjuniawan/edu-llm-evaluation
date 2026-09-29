@@ -43,11 +43,13 @@ def check_consistency(labeled: list[tuple[str, dict]]) -> tuple[list[str], list[
             elif got != want:
                 errors.append(f"{label}: {name}={got!r} != {first_label} {want!r}.")
 
-    commits: dict[str | None, list[str]] = {}
+    commits: dict[str, list[str]] = {}
 
     for label, metadata in labeled:
         value, _ = _get(metadata, "git_commit")
-        commits.setdefault(value, []).append(label)
+        commits.setdefault(value if isinstance(value, str) else "missing", []).append(
+            label
+        )
 
     if len(commits) > 1:
         warnings.append(f"git_commit differs across runs: {commits}.")
