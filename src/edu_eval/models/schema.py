@@ -81,6 +81,11 @@ class ModelSpec(BaseModel):
         description="Forced compute precision; defaults apply when unset.",
     )
 
+    trust_remote_code: bool = Field(
+        default=False,
+        description="Allow executing remote checkpoint code; enable consciously.",
+    )
+
     architecture: str | None = None
 
     parameter_count: int | None = Field(
