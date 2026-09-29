@@ -159,6 +159,12 @@ def validation_report(
     capsules = sum(
         1 for case in cases if case.reference.source_type == "project_capsule"
     )
+    unknown_exposure = sum(
+        1 for case in cases if case.reference.training_exposure == "unknown"
+    )
+    seen_exposure = sum(
+        1 for case in cases if case.reference.training_exposure == "seen"
+    )
     phases_valid = all(
         (evidence.curriculum_phase, evidence.grade) == EXPECTED_PHASE_GRADE[target]
         for case in cases
@@ -170,6 +176,17 @@ def validation_report(
 
     if capsules:
         notes.append(f"{capsules}/{len(cases)} references are project_capsule drafts.")
+
+    if unknown_exposure:
+        notes.append(
+            f"{unknown_exposure}/{len(cases)} references have unknown training exposure."
+        )
+
+    if seen_exposure:
+        notes.append(
+            f"{seen_exposure}/{len(cases)} references are seen in training; "
+            "in-domain only, excluded from primary research."
+        )
 
     if phase_only:
         notes.append(
@@ -208,6 +225,12 @@ def validation_report(
 
     if capsules:
         blockers.append(f"{capsules} project_capsule references")
+
+    if unknown_exposure:
+        blockers.append(f"{unknown_exposure} unknown training exposure")
+
+    if seen_exposure:
+        blockers.append(f"{seen_exposure} seen training exposure")
 
     if phase_only:
         blockers.append(f"{phase_only} phase_only evidence entries")
