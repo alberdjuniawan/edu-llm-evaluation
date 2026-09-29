@@ -55,11 +55,34 @@ def expected_prompt_id(
     ).hexdigest()[:16]
 
 
+def _drop_torn_tail(path: Path) -> None:
+    with path.open("r", encoding="utf-8") as file:
+        lines = file.readlines()
+
+    torn = 0
+
+    while lines and lines[-1].strip():
+        try:
+            json.loads(lines[-1])
+            break
+        except json.JSONDecodeError:
+            lines.pop()
+            torn += 1
+
+    if torn:
+        with path.open("w", encoding="utf-8") as file:
+            file.writelines(lines)
+
+        print(f"warning: dropped {torn} torn trailing line(s) in {path}.")
+
+
 def read_existing_keys(path: Path, prompt_version: str) -> set[tuple[str, str]]:
     done: set[tuple[str, str]] = set()
 
     if not path.exists():
         return done
+
+    _drop_torn_tail(path)
 
     with path.open("r", encoding="utf-8") as file:
         for line_number, line in enumerate(file, start=1):
