@@ -166,6 +166,7 @@ def test_require_research_ready_gate():
 def test_validate_resume_identity():
     validate_resume_identity({}, {"a": 1})
     validate_resume_identity({"a": 1}, {"a": 1})
+    validate_resume_identity({"a": 1}, {"a": 1, "b": 2})
 
     with pytest.raises(RuntimeError):
         validate_resume_identity({"a": 1}, {"a": 2})
