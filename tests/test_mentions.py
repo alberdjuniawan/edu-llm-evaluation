@@ -29,3 +29,18 @@ def test_clean_text_has_no_flags():
         "instruction_disclosure": False,
         "meta_prompt_disclosure": False,
     }
+
+
+def test_grade_mention_variants():
+    for text in (
+        "untuk kelas VI",
+        "siswa kelas ix",
+        "kelas 10",
+        "kelas enam",
+        "Kelas X",
+    ):
+        assert classify_mentions(text)["grade_mention"] is True, text
+
+    assert (
+        classify_mentions("kelasnya bagus, kelas xylophone")["grade_mention"] is False
+    )
