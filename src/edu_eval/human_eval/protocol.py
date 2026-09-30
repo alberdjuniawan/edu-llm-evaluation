@@ -26,6 +26,7 @@ GRADE_FIT_ANCHORS = {
 
 class RatingRecord(BaseModel):
     rating_id: str = Field(min_length=1)
+    pack_id: str | None = None
     case_id: str = Field(min_length=1)
     target_grade: GradeTarget
     rater_id: str = Field(min_length=1)
