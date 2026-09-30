@@ -62,18 +62,24 @@ config subsets, never separate files.
 ## 5. Run order
 
 ```bash
-# 0. audit (downloads weights on first run)
-# 1. knowledge, full (resumable; rerun same command after interruption)
-uv run python scripts/run_knowledge.py --model-id <id> --span answer
-# 2. span sensitivity on a sample (is answer-span the right primary?)
-uv run python scripts/compare_spans.py --model-id <id> --count 120
-# 3. generation pilot (40 outputs) — read truncation/mention rates first
+# 0. audit: fill revision (HF) or weights_sha256 (local) in configs/models.yaml;
+#    research runs refuse to start without it
+# 1. knowledge, full = OFFICIAL IndoMMLU letter scoring (resumable). A 64-question
+#    preflight runs first and aborts on a broken setup before any long compute.
+uv run python scripts/run_knowledge.py --model-id <id>
+# 2. sensitivity on a sample (own results tag, never mixed with the primary):
+uv run python scripts/run_knowledge.py --model-id <id> --limit 500 --letter-style official
+uv run python scripts/run_knowledge.py --model-id <id> --limit 500 --prompt-format chat
+uv run python scripts/run_knowledge.py --model-id <id> --limit 500 --score-mode mean_log_likelihood --span answer
+# 3. generation pilot (40 outputs); a 2-case preflight runs first and aborts on
+#    thinking-leak / truncation / repetition before anything is written
 uv run python scripts/run_generation.py --model-id <id> --mode pilot
 # 4. generation full (240 outputs) — refuses to run unless research_ready == PASS
 uv run python scripts/run_generation.py --model-id <id> --mode full
 # 5. diagnostics + analysis (no GPU needed)
 uv run python scripts/run_linguistic.py --inputs <outputs.jsonl>
-uv run python scripts/analyze_results.py --model-id <id> [--model-id <id2>]
+uv run python scripts/analyze_results.py --model-id <id> [--model-id <id2>] [--tag letter-natural-plain]
+uv run python scripts/analyze_grade_adaptation.py results/generation/pilot/<model>/controlled_outputs.jsonl
 uv run python scripts/check_protocol.py <run_metadata_1.json> [<run_metadata_2.json> ...]
 ```
 
@@ -100,8 +106,8 @@ ERROR → runs are not comparable, do not compare them.
 |---|---|---|
 | `models.yaml` | source, revision, lineage, precision | revision required for research |
 | `runtime.yaml` | seed | yes (42) |
-| `knowledge.yaml` | score_mode, score_span (`answer`), levels, batch_size | span + levels yes |
-| `generation.yaml` | max_new_tokens 256, greedy, `prompt_version: cg_v1`, grades, subjects, pilot/full counts | prompt + decoding yes |
+| `knowledge.yaml` | primary_score_mode (`letter`), letter_style, prompt_format, levels, batch_size | mode + style + levels yes |
+| `generation.yaml` | max_new_tokens 256, greedy, `prompt_version: cg_v2`, `enable_thinking: false`, grades, subjects, pilot/full counts | prompt + decoding yes |
 | `linguistic.yaml` | min chars, english-formula flag | formulas are diagnostic-only |
 | `human_eval.yaml` | 1–5 scale, dimensions, blinding seed, pairwise fraction, calibration size | yes |
 | `inference.yaml` | precisions, batch sizes, TTFT/TPOT flags | reference BF16 first |
@@ -112,7 +118,9 @@ mid-benchmark.
 ## 8. Results layout
 
 ```text
-results/knowledge/<model>/{primary_sd_smp,retention_sma}.jsonl + run_metadata.json
+results/knowledge/<model>/<tag>/{primary_sd_smp,retention_sma}.jsonl + run_metadata.json
+   (tag = letter-natural-plain | letter-official-plain | letter-natural-chat |
+    mean_log_likelihood-answer | ...-n<limit>)
 results/generation/<pilot|full>/<model>/controlled_outputs.jsonl + run_metadata.json
 results/linguistic/<name>.jsonl  results/human_eval/pilot_pack.jsonl + ratings-*.jsonl
 results/inference/<model>_<precision>.json
