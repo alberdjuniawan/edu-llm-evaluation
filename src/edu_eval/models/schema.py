@@ -1,3 +1,4 @@
+import re
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -86,6 +87,11 @@ class ModelSpec(BaseModel):
         description="Allow executing remote checkpoint code; enable consciously.",
     )
 
+    weights_sha256: str | None = Field(
+        default=None,
+        description="Content hash of local weights; required for local sources.",
+    )
+
     architecture: str | None = None
 
     parameter_count: int | None = Field(
@@ -103,3 +109,25 @@ class ModelSpec(BaseModel):
     chat_template_available: bool | None = None
 
     documentation_status: DocumentationStatus = "unknown"
+
+    def is_local_source(self) -> bool:
+        return self.source.startswith(("/", "./", "../", "~")) or bool(
+            re.match(r"^[A-Za-z]:[\\/]", self.source)
+        )
+
+    def require_pinned_identity(self) -> None:
+        """Research runs must be reproducible: pin the revision (HF) or hash (local)."""
+        if self.model_role != "research":
+            return
+
+        if self.is_local_source():
+            if not self.weights_sha256:
+                raise ValueError(
+                    f"{self.model_id}: source lokal ({self.source}) wajib punya "
+                    "weights_sha256 di configs/models.yaml sebelum run riset."
+                )
+        elif not self.revision:
+            raise ValueError(
+                f"{self.model_id}: revision kosong. Isi commit hash HF di "
+                "configs/models.yaml sebelum run riset."
+            )
