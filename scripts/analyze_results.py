@@ -3,7 +3,13 @@ import json
 from collections import defaultdict
 from pathlib import Path
 
-from edu_eval.knowledge.diagnostics import correctness, position_bias_report
+from edu_eval.knowledge.diagnostics import (
+    chance_baseline,
+    correctness,
+    position_bias_report,
+    position_debiased_accuracy,
+    prediction_entry,
+)
 from edu_eval.statistics.metrics import bootstrap_ci, cohens_h, paired_bootstrap_ci
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -27,10 +33,7 @@ def load_predictions(path: Path) -> list[dict]:
 
 
 def mean_margin(records: list[dict]) -> float:
-    margins = [
-        record["predictions"].get("mean_log_likelihood", {}).get("margin")
-        for record in records
-    ]
+    margins = [prediction_entry(record).get("margin") for record in records]
     margins = [margin for margin in margins if isinstance(margin, (int, float))]
 
     return sum(margins) / len(margins) if margins else 0.0
@@ -76,6 +79,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Summarize knowledge results.")
     parser.add_argument("--model-id", nargs="+", required=True)
     parser.add_argument("--results-dir", type=Path, default=DEFAULT_RESULTS_DIR)
+    parser.add_argument(
+        "--tag",
+        default="letter-natural-plain",
+        help="Results subfolder, e.g. letter-natural-plain or mean_log_likelihood-answer.",
+    )
     args = parser.parse_args()
 
     if not args.model_id:
@@ -84,7 +92,7 @@ def main() -> None:
     by_model: dict[str, tuple[list[dict], list[dict]]] = {}
 
     for model_id in args.model_id:
-        model_dir = args.results_dir / model_id
+        model_dir = args.results_dir / model_id / args.tag
         by_model[model_id] = (
             load_predictions(model_dir / "primary_sd_smp.jsonl"),
             load_predictions(model_dir / "retention_sma.jsonl"),
@@ -98,6 +106,11 @@ def main() -> None:
         print(f"predicted_positions={bias['predicted_counts']}")
         print(f"gold_positions={bias['gold_counts']}")
         print(f"acc_by_gold={bias['accuracy_by_gold_position']}")
+        both = primary + retention
+        print(
+            f"chance={chance_baseline(both):.4f} "
+            f"position_debiased_acc={position_debiased_accuracy(both):.4f}"
+        )
 
     if len(by_model) >= 2:
         reference_id = args.model_id[0]
