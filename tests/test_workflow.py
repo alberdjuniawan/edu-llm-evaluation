@@ -68,8 +68,8 @@ def test_validate_ratings_catches_problems():
 def test_coverage_report():
     pack = _pack()
     ratings = [
-        _rating(case="CG-000", grade="SD6"),
-        _rating(case="CG-001", grade="SMP7"),
+        _rating(pack_id="PILOT-000", case="CG-000", grade="SD6"),
+        _rating(pack_id="PILOT-001", case="CG-001", grade="SMP7"),
     ]
 
     report = coverage_report(ratings, pack)
