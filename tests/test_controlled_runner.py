@@ -183,7 +183,8 @@ def test_generation_config_matches_spec():
     assert config.max_new_tokens == 256
     assert config.do_sample is False
     assert config.use_cache is True
-    assert config.prompt_version == "cg_v1"
+    assert config.prompt_version == "cg_v2"
+    assert config.enable_thinking is False
     assert list(config.target_grades) == ["SD6", "SMP7", "SMP9", "SMA10"]
     assert config.pilot_cases_per_subject == 2
     assert config.full_cases_per_subject == 12
