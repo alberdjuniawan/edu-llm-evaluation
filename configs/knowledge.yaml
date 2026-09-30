@@ -1,10 +1,15 @@
 knowledge:
-  primary_score_mode: mean_log_likelihood
-  score_span: answer
+  # letter = official IndoMMLU protocol (evaluate.py --by_letter); comparable to paper
+  primary_score_mode: letter
+  letter_style: natural        # natural | official (official = sensitivity check only)
+  prompt_format: plain         # plain | chat (chat = optional sensitivity for SFT models)
+  chat_enable_thinking: false
+  score_span: answer           # only used by mean_log_likelihood (sensitivity, non-official)
   primary_levels:
     - SD
     - SMP
   retention_levels:
     - SMA
   exclude_fewshot: true
-  batch_size: 1
+  batch_size: 8
+  preflight_questions: 64

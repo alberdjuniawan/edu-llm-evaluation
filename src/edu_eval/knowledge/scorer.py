@@ -29,12 +29,19 @@ class KnowledgePrediction(TypedDict):
     grade: str
     subject: str
     gold_index: int
+    score_mode: str
     score_span: str
     choice_scores: list[ChoiceScore]
     predictions: dict[str, ModePrediction]
 
 
 class KnowledgeScorer:
+    score_mode = "mean_log_likelihood"
+
+    @property
+    def signature(self) -> tuple:
+        return ("mean_log_likelihood", self.span)
+
     def __init__(
         self,
         model: PreTrainedModel,
@@ -172,6 +179,7 @@ class KnowledgeScorer:
             "grade": question.grade,
             "subject": question.subject,
             "gold_index": question.answer_index,
+            "score_mode": "mean_log_likelihood",
             "score_span": self.span,
             "choice_scores": scores,
             "predictions": {"mean_log_likelihood": prediction},
@@ -224,6 +232,7 @@ class KnowledgeScorer:
                         "grade": question.grade,
                         "subject": question.subject,
                         "gold_index": question.answer_index,
+                        "score_mode": "mean_log_likelihood",
                         "score_span": self.span,
                         "choice_scores": scores,
                         "predictions": {"mean_log_likelihood": prediction},

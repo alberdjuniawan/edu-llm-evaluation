@@ -10,6 +10,7 @@ class GenerationConfig(BaseModel):
     max_new_tokens: int = Field(gt=0)
     do_sample: bool = False
     use_cache: bool = True
+    enable_thinking: bool | None = None
 
     prompt_version: str = Field(min_length=1)
 

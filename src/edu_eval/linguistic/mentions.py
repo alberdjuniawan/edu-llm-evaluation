@@ -1,10 +1,9 @@
+import re
 from typing import TypedDict
 
-GRADE_MENTION_PATTERNS = (
-    "kelas 6",
-    "kelas 7",
-    "kelas 9",
-    "kelas 10",
+GRADE_MENTION_RE = re.compile(
+    r"\bkelas\s*(6|7|9|10|vi|vii|ix|x|enam|tujuh|sembilan|sepuluh)\b",
+    re.IGNORECASE,
 )
 
 INSTRUCTION_PATTERNS = (
@@ -34,7 +33,7 @@ def _hits(text: str, patterns: tuple[str, ...]) -> bool:
 
 def classify_mentions(text: str) -> MentionFlags:
     return {
-        "grade_mention": _hits(text, GRADE_MENTION_PATTERNS),
+        "grade_mention": bool(GRADE_MENTION_RE.search(text)),
         "instruction_disclosure": _hits(text, INSTRUCTION_PATTERNS),
         "meta_prompt_disclosure": _hits(text, META_PATTERNS),
     }

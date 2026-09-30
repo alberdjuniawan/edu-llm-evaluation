@@ -39,12 +39,18 @@ class GenerationRunner:
             raise ValueError("user_prompt must not be empty.")
 
         messages = [{"role": "user", "content": user_prompt}]
+        template_kwargs: dict[str, bool] = {}
+
+        if self.config.enable_thinking is not None:
+            template_kwargs["enable_thinking"] = self.config.enable_thinking
+
         encoded = self.tokenizer.apply_chat_template(
             messages,
             tokenize=True,
             add_generation_prompt=True,
             return_tensors="pt",
             return_dict=True,
+            **template_kwargs,
         )
 
         if not isinstance(encoded, BatchEncoding):
