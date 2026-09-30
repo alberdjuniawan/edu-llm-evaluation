@@ -147,6 +147,7 @@ function exportRatings() {
     if (!r || !DIMS.every(d => r[d[0]])) continue;
     rows.push({
       rating_id: `${raterId}:${item.pack_id}`,
+      pack_id: item.pack_id,
       case_id: item.case_id,
       target_grade: item.target_grade,
       rater_id: raterId,
