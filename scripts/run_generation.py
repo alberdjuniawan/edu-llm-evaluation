@@ -25,8 +25,10 @@ from edu_eval.generation.controlled import (
     ControlledGenerationResult,
     ControlledGenerationRunner,
 )
+from edu_eval.generation.quality import DEFAULT_THRESHOLDS, run_preflight
 from edu_eval.generation.runner import GenerationRunner, GenerativeModel
 from edu_eval.generation.schema import ControlledGenerationCase
+from edu_eval.generation.template_check import require_thinking_off
 from edu_eval.models.loader import ModelLoader
 from edu_eval.models.registry import ModelRegistry
 from edu_eval.runtime.env import (
@@ -165,6 +167,20 @@ def main() -> None:
         help="Override generation max_new_tokens (e.g. 256 vs 512 pilot).",
     )
 
+    parser.add_argument(
+        "--preflight-cases",
+        type=int,
+        default=2,
+        help="Judge this many cases before the full loop (0 disables; be deliberate).",
+    )
+
+    parser.add_argument(
+        "--max-truncation",
+        type=float,
+        default=DEFAULT_THRESHOLDS["truncated"],
+        help="Preflight ceiling for the share of outputs hitting max_new_tokens.",
+    )
+
     args = parser.parse_args()
 
     generation_config = GenerationConfig.from_yaml(args.generation_config)
@@ -173,6 +189,11 @@ def main() -> None:
         generation_config = generation_config.model_copy(
             update={"max_new_tokens": args.max_new_tokens}
         )
+
+    # Primary generation protocol: thinking OFF.
+    generation_config = generation_config.model_copy(
+        update={"enable_thinking": False}
+    )
 
     require_deterministic(generation_config, args.allow_sampling)
 
@@ -183,6 +204,7 @@ def main() -> None:
 
     registry = ModelRegistry.from_yaml(MODELS_CONFIG)
     spec = registry.get(args.model_id)
+    spec.require_pinned_identity()
 
     cases = load_cases(args.cases)
     report = validation_report(cases, generation_config)
@@ -218,6 +240,7 @@ def main() -> None:
         {
             "model_id": spec.model_id,
             "model_revision": spec.revision,
+            "model_weights_sha256": spec.weights_sha256,
             "mode": args.mode,
             "dataset_hash": dataset_hash,
             "generation_config_hash": config_hash,
@@ -229,6 +252,18 @@ def main() -> None:
     tokenizer, model, device = ModelLoader.load(spec)
     dtype = next(model.parameters()).dtype
     print(f"device={device} dtype={dtype}")
+
+    # Hard-disable thinking at the chat-template boundary.
+    original_apply_chat_template = tokenizer.apply_chat_template
+
+    def apply_chat_template_no_thinking(*args, **kwargs):
+        kwargs["enable_thinking"] = False
+        return original_apply_chat_template(*args, **kwargs)
+
+    tokenizer.apply_chat_template = apply_chat_template_no_thinking
+
+    template_info = require_thinking_off(tokenizer, generation_config.enable_thinking)
+    print(f"template={template_info}")
 
     generation_runner = GenerationRunner(
         model=cast(GenerativeModel, model),
@@ -251,6 +286,31 @@ def main() -> None:
     newly_done = 0
     truncated = 0
     benchmark_start = time.perf_counter()
+
+    if args.preflight_cases > 0:
+        pre_results, pre_ok, pre_rates, pre_reasons = run_preflight(
+            controlled_runner.generate,
+            selected[: args.preflight_cases],
+            list(generation_config.target_grades),
+            done,
+            thresholds={"truncated": args.max_truncation},
+        )
+
+        if pre_results:
+            print(f"preflight n={len(pre_results)} rates={pre_rates}")
+
+            if not pre_ok:
+                print(f"PREFLIGHT GAGAL: {pre_reasons}")
+                print(f"contoh output: {pre_results[0]['output_text'][:400]!r}")
+                print("Tidak ada yang ditulis. Perbaiki config/prompt, jangan lanjut.")
+
+                raise SystemExit(2)
+
+            for result in pre_results:
+                write_results(output_path, [result])
+                done.add((result["case_id"], result["target_grade"]))
+                newly_done += 1
+                truncated += int(result["hit_max_new_tokens"])
 
     for case in selected:
         for grade in generation_config.target_grades:
@@ -280,6 +340,7 @@ def main() -> None:
         "model_id": spec.model_id,
         "model_source": spec.source,
         "model_revision": spec.revision,
+        "model_weights_sha256": spec.weights_sha256,
         "mode": args.mode,
         "device": str(device),
         "device_name": device_name,
@@ -288,6 +349,8 @@ def main() -> None:
             "max_new_tokens": generation_config.max_new_tokens,
             "do_sample": generation_config.do_sample,
             "use_cache": generation_config.use_cache,
+            "enable_thinking": generation_config.enable_thinking,
+            "template_check": template_info,
             "prompt_version": generation_config.prompt_version,
             "target_grades": list(generation_config.target_grades),
         },
