@@ -2,8 +2,9 @@ generation:
   max_new_tokens: 256
   do_sample: false
   use_cache: true
+  enable_thinking: false
 
-  prompt_version: cg_v1
+  prompt_version: cg_v2
 
   target_grades:
     - SD6
